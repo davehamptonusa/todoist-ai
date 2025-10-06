@@ -70,7 +70,6 @@ describe(`${FIND_COMMENTS} tool`, () => {
                     searchType: 'task',
                     searchId: 'task123',
                     hasMore: false,
-                    nextCursor: null,
                     totalCount: 2,
                 }),
             )
@@ -165,7 +164,6 @@ describe(`${FIND_COMMENTS} tool`, () => {
                     searchType: 'project',
                     searchId: 'project456',
                     hasMore: false,
-                    nextCursor: null,
                     totalCount: 1,
                 }),
             )
@@ -203,13 +201,11 @@ describe(`${FIND_COMMENTS} tool`, () => {
                             id: 'comment789',
                             content: 'Single comment content',
                             taskId: 'task123',
-                            fileAttachment: null,
                         }),
                     ]),
                     searchType: 'single',
                     searchId: 'comment789',
                     hasMore: false,
-                    nextCursor: null,
                     totalCount: 1,
                 }),
             )
@@ -258,7 +254,6 @@ describe(`${FIND_COMMENTS} tool`, () => {
                     searchType: 'single',
                     searchId: 'comment789',
                     hasMore: false,
-                    nextCursor: null,
                     totalCount: 1,
                 }),
             )
@@ -304,16 +299,13 @@ describe(`${FIND_COMMENTS} tool`, () => {
 
             // Verify structured content
             const structuredContent = extractStructuredContent(result)
-            expect(structuredContent).toEqual(
-                expect.objectContaining({
-                    comments: [],
-                    searchType: 'task',
-                    searchId: 'task123',
-                    hasMore: false,
-                    nextCursor: null,
-                    totalCount: 0,
-                }),
-            )
+            expect(structuredContent).toEqual({
+                searchType: 'task',
+                searchId: 'task123',
+                hasMore: false,
+                totalCount: 0,
+                // comments array is removed when empty
+            })
         })
     })
 })
