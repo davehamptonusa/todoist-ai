@@ -1,8 +1,14 @@
 import { addDays, formatISO } from 'date-fns'
 import { z } from 'zod'
+import {
+    appendToQuery,
+    buildResponsibleUserQueryFilter,
+    RESPONSIBLE_USER_FILTERING,
+    resolveResponsibleUser,
+} from '../filter-helpers.js'
 import { getToolOutput } from '../mcp-helpers.js'
 import type { TodoistTool } from '../todoist-tool.js'
-import { getTasksByFilter, RESPONSIBLE_USER_FILTERING } from '../tool-helpers.js'
+import { getTasksByFilter } from '../tool-helpers.js'
 import { ApiLimits } from '../utils/constants.js'
 import { generateLabelsFilter, LabelsSchema } from '../utils/labels.js'
 import {
@@ -47,11 +53,15 @@ const ArgsSchema = {
         .describe(
             'The cursor to get the next page of tasks (cursor is obtained from the previous call to this tool, with the same parameters).',
         ),
+    responsibleUser: z
+        .string()
+        .optional()
+        .describe('Find tasks assigned to this user. Can be a user ID, name, or email address.'),
     responsibleUserFiltering: z
         .enum(RESPONSIBLE_USER_FILTERING)
         .optional()
         .describe(
-            'How to filter by responsible user. "assigned" = only tasks assigned to others; "unassignedOrMe" = only unassigned tasks or tasks assigned to me; "all" = all tasks regardless of assignment. Default is "unassignedOrMe".',
+            'How to filter by responsible user when responsibleUser is not provided. "assigned" = only tasks assigned to others; "unassignedOrMe" = only unassigned tasks or tasks assigned to me; "all" = all tasks regardless of assignment. Default is "unassignedOrMe".',
         ),
     ...LabelsSchema,
 }
@@ -67,6 +77,11 @@ const findTasksByDate = {
                 'Either startDate must be provided or overdueOption must be set to overdue-only',
             )
         }
+
+        // Resolve assignee name to user ID if provided
+        const resolved = await resolveResponsibleUser(client, args.responsibleUser)
+        const resolvedAssigneeId = resolved?.userId
+        const assigneeEmail = resolved?.email
 
         let query = ''
 
@@ -84,26 +99,19 @@ const findTasksByDate = {
             query = `(due after: ${startDate} | due: ${startDate}) & due before: ${endDateStr}`
         }
 
+        // Add labels filter
         const labelsFilter = generateLabelsFilter(args.labels, args.labelsOperator)
         if (labelsFilter.length > 0) {
-            // If there is already a query, we need to append the & operator first
-            if (query.length > 0) query += ' & '
-            // Add the labels to the filter
-            query += `(${labelsFilter})`
+            query = appendToQuery(query, `(${labelsFilter})`)
         }
 
         // Add responsible user filtering to the query (backend filtering)
-        const filteringMode = args.responsibleUserFiltering || 'unassignedOrMe'
-        if (filteringMode === 'unassignedOrMe') {
-            // Exclude tasks assigned to others (keeps unassigned + assigned to me)
-            if (query.length > 0) query += ' & '
-            query += '!assigned to: others'
-        } else if (filteringMode === 'assigned') {
-            // Only tasks assigned to others
-            if (query.length > 0) query += ' & '
-            query += 'assigned to: others'
-        }
-        // For 'all', don't add any assignment filter
+        const responsibleUserFilter = buildResponsibleUserQueryFilter({
+            resolvedAssigneeId,
+            assigneeEmail,
+            responsibleUserFiltering: args.responsibleUserFiltering,
+        })
+        query = appendToQuery(query, responsibleUserFilter)
 
         const result = await getTasksByFilter({
             client,
@@ -119,6 +127,7 @@ const findTasksByDate = {
             tasks: filteredTasks,
             args,
             nextCursor: result.nextCursor,
+            assigneeEmail,
         })
 
         return getToolOutput({
@@ -138,10 +147,12 @@ function generateTextContent({
     tasks,
     args,
     nextCursor,
+    assigneeEmail,
 }: {
     tasks: Awaited<ReturnType<typeof getTasksByFilter>>['tasks']
     args: z.infer<z.ZodObject<typeof ArgsSchema>>
     nextCursor: string | null
+    assigneeEmail?: string
 }) {
     // Generate filter description
     const filterHints: string[] = []
@@ -169,6 +180,12 @@ function generateTextContent({
         filterHints.push(`labels: ${labelText}`)
     }
 
+    // Add responsible user filter information
+    if (args.responsibleUser) {
+        const email = assigneeEmail || args.responsibleUser
+        filterHints.push(`assigned to: ${email}`)
+    }
+
     // Generate subject description
     let subject = ''
     if (args.overdueOption === 'overdue-only') {
@@ -180,6 +197,12 @@ function generateTextContent({
         subject = `Tasks for ${args.startDate}`
     } else {
         subject = 'Tasks'
+    }
+
+    // Append responsible user to subject if provided
+    if (args.responsibleUser) {
+        const email = assigneeEmail || args.responsibleUser
+        subject += ` assigned to ${email}`
     }
 
     // Generate helpful suggestions for empty results

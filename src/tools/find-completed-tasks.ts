@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { appendToQuery, resolveResponsibleUser } from '../filter-helpers.js'
 import { getToolOutput } from '../mcp-helpers.js'
 import type { TodoistTool } from '../todoist-tool.js'
 import { mapTask } from '../tool-helpers.js'
@@ -30,6 +31,10 @@ const ArgsSchema = {
     projectId: z.string().optional().describe('The ID of the project to get the tasks for.'),
     sectionId: z.string().optional().describe('The ID of the section to get the tasks for.'),
     parentId: z.string().optional().describe('The ID of the parent task to get the tasks for.'),
+    responsibleUser: z
+        .string()
+        .optional()
+        .describe('Find tasks assigned to this user. Can be a user ID, name, or email address.'),
 
     limit: z
         .number()
@@ -52,8 +57,19 @@ const findCompletedTasks = {
     description: 'Get completed tasks.',
     parameters: ArgsSchema,
     async execute(args, client) {
-        const { getBy, labels, labelsOperator, since, until, ...rest } = args
+        const { getBy, labels, labelsOperator, since, until, responsibleUser, ...rest } = args
+
+        // Resolve assignee name to user ID if provided
+        const resolved = await resolveResponsibleUser(client, responsibleUser)
+        const assigneeEmail = resolved?.email
+
+        // Build combined filter query (labels + assignment)
         const labelsFilter = generateLabelsFilter(labels, labelsOperator)
+        let filterQuery = labelsFilter
+
+        if (resolved && assigneeEmail) {
+            filterQuery = appendToQuery(filterQuery, `assigned to: ${assigneeEmail}`)
+        }
 
         // Get user timezone to convert local dates to UTC
         const user = await client.getUser()
@@ -74,13 +90,13 @@ const findCompletedTasks = {
                       ...rest,
                       since: sinceDateTime,
                       until: untilDateTime,
-                      ...(labelsFilter ? { filterQuery: labelsFilter, filterLang: 'en' } : {}),
+                      ...(filterQuery ? { filterQuery, filterLang: 'en' } : {}),
                   })
                 : await client.getCompletedTasksByDueDate({
                       ...rest,
                       since: sinceDateTime,
                       until: untilDateTime,
-                      ...(labelsFilter ? { filterQuery: labelsFilter, filterLang: 'en' } : {}),
+                      ...(filterQuery ? { filterQuery, filterLang: 'en' } : {}),
                   })
         const mappedTasks = items.map(mapTask)
 
@@ -88,6 +104,7 @@ const findCompletedTasks = {
             tasks: mappedTasks,
             args,
             nextCursor,
+            assigneeEmail,
         })
 
         return getToolOutput({
@@ -107,10 +124,12 @@ function generateTextContent({
     tasks,
     args,
     nextCursor,
+    assigneeEmail,
 }: {
     tasks: ReturnType<typeof mapTask>[]
     args: z.infer<z.ZodObject<typeof ArgsSchema>>
     nextCursor: string | null
+    assigneeEmail?: string
 }) {
     // Generate subject description
     const getByText = args.getBy === 'completion' ? 'completed' : 'due'
@@ -130,6 +149,12 @@ function generateTextContent({
             .map((label) => `@${label}`)
             .join(args.labelsOperator === 'and' ? ' & ' : ' | ')
         filterHints.push(`labels: ${labelText}`)
+    }
+
+    // Add responsible user filter information
+    if (args.responsibleUser) {
+        const email = assigneeEmail || args.responsibleUser
+        filterHints.push(`assigned to: ${email}`)
     }
 
     // Generate helpful suggestions for empty results

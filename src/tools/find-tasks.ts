@@ -1,13 +1,14 @@
 import { GetTasksArgs } from '@doist/todoist-api-typescript'
 import { z } from 'zod'
+import {
+    appendToQuery,
+    filterTasksByResponsibleUser,
+    RESPONSIBLE_USER_FILTERING,
+    resolveResponsibleUser,
+} from '../filter-helpers.js'
 import { getToolOutput } from '../mcp-helpers.js'
 import type { TodoistTool } from '../todoist-tool.js'
-import {
-    filterTasksByResponsibleUser,
-    getTasksByFilter,
-    mapTask,
-    RESPONSIBLE_USER_FILTERING,
-} from '../tool-helpers.js'
+import { getTasksByFilter, mapTask } from '../tool-helpers.js'
 import { ApiLimits } from '../utils/constants.js'
 import { generateLabelsFilter, LabelsSchema } from '../utils/labels.js'
 import {
@@ -18,7 +19,6 @@ import {
 } from '../utils/response-builders.js'
 import { MappedTask } from '../utils/test-helpers.js'
 import { ToolNames } from '../utils/tool-names.js'
-import { resolveUserNameToId } from '../utils/user-resolver.js'
 
 const { FIND_COMPLETED_TASKS, ADD_TASKS } = ToolNames
 
@@ -90,19 +90,9 @@ const findTasks = {
         }
 
         // Resolve assignee name to user ID if provided
-        let resolvedAssigneeId: string | undefined = responsibleUser
-        let assigneeDisplayName: string | undefined
-        if (responsibleUser) {
-            const resolved = await resolveUserNameToId(client, responsibleUser)
-            if (resolved) {
-                resolvedAssigneeId = resolved.userId
-                assigneeDisplayName = resolved.displayName
-            } else {
-                throw new Error(
-                    `Could not find user: "${responsibleUser}". Make sure the user is a collaborator on a shared project.`,
-                )
-            }
-        }
+        const resolved = await resolveResponsibleUser(client, responsibleUser)
+        const resolvedAssigneeId = resolved?.userId
+        const assigneeEmail = resolved?.email
 
         // If using container-based filtering, use direct API
         if (projectId || sectionId || parentId) {
@@ -152,7 +142,7 @@ const findTasks = {
                 args,
                 nextCursor,
                 isContainerSearch: true,
-                assigneeDisplayName,
+                assigneeEmail,
             })
 
             return getToolOutput({
@@ -170,7 +160,7 @@ const findTasks = {
         // If only responsibleUid is provided (without containers), use assignee filter
         if (resolvedAssigneeId && !searchText && !hasLabels) {
             const tasks = await client.getTasksByFilter({
-                query: `assigned to: ${assigneeDisplayName}`,
+                query: `assigned to: ${assigneeEmail}`,
                 lang: 'en',
                 limit,
                 cursor: cursor ?? null,
@@ -183,7 +173,7 @@ const findTasks = {
                 args,
                 nextCursor: tasks.nextCursor,
                 isContainerSearch: false,
-                assigneeDisplayName,
+                assigneeEmail,
             })
 
             return getToolOutput({
@@ -208,13 +198,7 @@ const findTasks = {
 
         // Add labels component
         const labelsFilter = generateLabelsFilter(labels, labelsOperator)
-        if (labelsFilter.length > 0) {
-            if (query.length > 0) {
-                query += ` & ${labelsFilter}`
-            } else {
-                query = labelsFilter
-            }
-        }
+        query = appendToQuery(query, labelsFilter)
 
         // Execute filter query
         const result = await getTasksByFilter({
@@ -236,7 +220,7 @@ const findTasks = {
             args,
             nextCursor: result.nextCursor,
             isContainerSearch: false,
-            assigneeDisplayName,
+            assigneeEmail,
         })
 
         return getToolOutput({
@@ -287,13 +271,13 @@ function generateTextContent({
     args,
     nextCursor,
     isContainerSearch,
-    assigneeDisplayName,
+    assigneeEmail,
 }: {
     tasks: MappedTask[]
     args: z.infer<z.ZodObject<typeof ArgsSchema>>
     nextCursor: string | null
     isContainerSearch: boolean
-    assigneeDisplayName?: string
+    assigneeEmail?: string
 }) {
     // Generate subject and filter descriptions based on search type
     let subject = 'Tasks'
@@ -323,9 +307,9 @@ function generateTextContent({
 
         // Add responsibleUid filter if present
         if (args.responsibleUser) {
-            const displayName = assigneeDisplayName || args.responsibleUser
-            subject += ` assigned to ${displayName}`
-            filterHints.push(`assigned to ${displayName}`)
+            const email = assigneeEmail || args.responsibleUser
+            subject += ` assigned to ${email}`
+            filterHints.push(`assigned to ${email}`)
         }
 
         // Add label filter information
@@ -342,7 +326,7 @@ function generateTextContent({
         }
     } else {
         // Text, responsibleUid, or labels search
-        const displayName = assigneeDisplayName || args.responsibleUser
+        const email = assigneeEmail || args.responsibleUser
 
         // Build subject based on filters
         const subjectParts = []
@@ -350,7 +334,7 @@ function generateTextContent({
             subjectParts.push(`"${args.searchText}"`)
         }
         if (args.responsibleUser) {
-            subjectParts.push(`assigned to ${displayName}`)
+            subjectParts.push(`assigned to ${email}`)
         }
         if (args.labels && args.labels.length > 0) {
             const labelText = args.labels
@@ -363,7 +347,7 @@ function generateTextContent({
             subject = `Search results for ${subjectParts.join(' ')}`
             filterHints.push(`matching "${args.searchText}"`)
         } else if (args.responsibleUser && (!args.labels || args.labels.length === 0)) {
-            subject = `Tasks assigned to ${displayName}`
+            subject = `Tasks assigned to ${email}`
         } else if (args.labels && args.labels.length > 0 && !args.responsibleUser) {
             const labelText = args.labels
                 .map((label) => `@${label}`)
@@ -375,7 +359,7 @@ function generateTextContent({
 
         // Add filter hints
         if (args.responsibleUser) {
-            filterHints.push(`assigned to ${displayName}`)
+            filterHints.push(`assigned to ${email}`)
         }
         if (args.labels && args.labels.length > 0) {
             const labelText = args.labels
@@ -386,8 +370,8 @@ function generateTextContent({
 
         if (tasks.length === 0) {
             if (args.responsibleUser) {
-                const displayName = assigneeDisplayName || args.responsibleUser
-                zeroReasonHints.push(`No tasks assigned to ${displayName}`)
+                const email = assigneeEmail || args.responsibleUser
+                zeroReasonHints.push(`No tasks assigned to ${email}`)
                 zeroReasonHints.push('Check if the user name is correct')
                 zeroReasonHints.push(`Check completed tasks with ${FIND_COMPLETED_TASKS}`)
             }
