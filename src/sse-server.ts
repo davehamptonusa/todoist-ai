@@ -180,7 +180,7 @@ function main() {
             }
 
             const httpsServer = createHttpsServer(httpsOptions, app)
-            httpsServer.listen(PORT, () => {
+            httpsServer.listen(PORT, '::', () => {
                 console.error(`Todoist MCP SSE Server running on port ${PORT} (HTTPS)`)
                 console.error(`SSE endpoint: https://localhost:${PORT}/sse`)
             })
@@ -191,7 +191,7 @@ function main() {
     } else {
         // HTTP mode (default)
         const httpServer = createHttpServer(app)
-        httpServer.listen(PORT, () => {
+        httpServer.listen(PORT, '::', () => {
             console.error(`Todoist MCP SSE Server running on port ${PORT} (HTTP)`)
             console.error(`SSE endpoint: http://localhost:${PORT}/sse`)
         })
