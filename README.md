@@ -42,6 +42,51 @@ You can run the MCP server directly with npx:
 npx @doist/todoist-ai
 ```
 
+For multi-user environments (like LibreChat) that require per-user authentication via API tokens, use the SSE server:
+
+```bash
+npm run start:sse
+```
+
+See [docs/mcp-server.md](docs/mcp-server.md) for detailed SSE setup and LibreChat configuration.
+
+### Running with Docker
+
+The SSE server can be run in a Docker container for easier deployment and isolation:
+
+**Build the image:**
+```bash
+docker build -t todoist-mcp-sse .
+```
+
+**Run the container:**
+```bash
+docker run --name todoist-mcp -p 3000:3000 todoist-mcp-sse
+```
+
+**Run with custom port:**
+```bash
+docker run --name todoist-mcp -p 8080:3000 -e PORT=3000 todoist-mcp-sse
+```
+
+**Run in detached mode (background):**
+```bash
+docker run -d --name todoist-mcp -p 3000:3000 todoist-mcp-sse
+```
+
+**View logs:**
+```bash
+docker logs -f todoist-mcp
+```
+
+**Stop the container:**
+```bash
+docker stop todoist-mcp
+docker rm todoist-mcp
+```
+
+For production deployment to platforms like Railway, see [RAILWAY.md](RAILWAY.md).
+
 ### Setup Guide
 
 The Todoist AI MCP server is available as a streamable HTTP service for easy integration with various AI clients:
