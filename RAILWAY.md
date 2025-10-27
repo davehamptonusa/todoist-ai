@@ -1,6 +1,6 @@
 # Railway Deployment Guide
 
-This guide explains how to deploy the Todoist MCP SSE Server to [Railway](https://railway.com?referralCode=TgIpfn).
+This guide explains how to deploy the Todoist MCP Streaming HTTP Server to [Railway](https://railway.com?referralCode=TgIpfn).
 
 ## Prerequisites
 
@@ -32,9 +32,8 @@ This guide explains how to deploy the Todoist MCP SSE Server to [Railway](https:
 ```yaml
 mcpServers:
   todoist:
-    type: sse
-    url: "https://your-service.up.railway.app/sse"
-    transport: "sse"
+    type: streamable-http
+    url: "https://your-service.up.railway.app/mcp"
     headers:
       X-Todoist-Token: "{{TODOIST_API_TOKEN}}"
     customUserVars:
@@ -96,13 +95,11 @@ Health check endpoint: `https://your-service.up.railway.app/`
 Expected response:
 ```json
 {
-  "name": "Todoist MCP SSE Server",
+  "name": "Todoist MCP Streaming HTTP Server",
   "version": "4.14.0",
   "status": "running",
-  "endpoints": {
-    "sse": "/sse",
-    "message": "/message"
-  },
+  "endpoint": "/mcp",
+  "methods": ["GET", "POST", "DELETE"],
   "activeSessions": 0
 }
 ```
@@ -127,9 +124,10 @@ railway logs
 
 ### Connection Issues
 
-1. Verify the Railway URL is correct
+1. Verify the Railway URL is correct (should point to `/mcp`)
 2. Check that LibreChat can reach the URL
 3. Ensure `X-Todoist-Token` header is being sent
+4. Verify LibreChat is configured with `type: streamable-http`
 
 ### Health Check Failures
 
@@ -162,6 +160,14 @@ Add these in Railway settings if needed:
 - ✅ No credentials stored in environment (per-user authentication)
 - ✅ Isolated MCP server instances per user
 - ✅ Health checks ensure availability
+
+## Technical Details
+
+The server uses MCP Streamable HTTP transport (protocol version 2025-03-26) which supports:
+- Single `/mcp` endpoint for all MCP operations (GET, POST, DELETE)
+- Session management via `Mcp-Session-Id` header
+- Per-user authentication via `X-Todoist-Token` or `Authorization: Bearer` headers
+- Isolated MCP server instances per user session
 
 ## Support
 

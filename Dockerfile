@@ -1,4 +1,4 @@
-# Railway-optimized Dockerfile for Todoist MCP SSE Server
+# Railway-optimized Dockerfile for Todoist MCP Streaming HTTP Server
 # Railway handles HTTPS termination, so we run HTTP only
 
 FROM node:20-alpine AS builder
@@ -51,6 +51,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 3000) + '/', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start the SSE server
-CMD ["node", "dist/sse-server.js"]
+# Start the Streaming HTTP server
+CMD ["node", "dist/http-server.js"]
 

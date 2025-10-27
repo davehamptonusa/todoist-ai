@@ -93,28 +93,28 @@ Update the configuration above as follows
 > [!NOTE]
 > You may also need to change the command, passing the full path to your `node` binary, depending one how you installed `node`.
 
-## Using SSE Transport with Per-User Authentication
+## Using Streaming HTTP Transport with Per-User Authentication
 
-The SSE (Server-Sent Events) transport enables per-user authentication, making it ideal for multi-user environments like LibreChat where each user needs their own Todoist API credentials.
+The Streaming HTTP transport enables per-user authentication, making it ideal for multi-user environments like LibreChat where each user needs their own Todoist API credentials.
 
-### Running the SSE Server
+### Running the Streaming HTTP Server
 
-Start the SSE server locally:
+Start the Streaming HTTP server locally:
 
 ```sh
-npm run start:sse
+npm run start:multiuser
 ```
 
 Or for development with auto-reload:
 
 ```sh
-npm run dev:sse
+npm run dev:multiuser
 ```
 
 The server will start on port 3000 by default. You can customize the port using the `PORT` environment variable:
 
 ```sh
-PORT=8080 npm run start:sse
+PORT=8080 npm run start:multiuser
 ```
 
 ### LibreChat Configuration
@@ -124,8 +124,8 @@ To use the Todoist MCP server with LibreChat's per-user authentication, add the 
 ```yaml
 mcpServers:
   todoist:
-    url: "http://localhost:3000/sse"
-    transport: "sse"
+    type: streamable-http
+    url: "http://localhost:3000/mcp"
     headers:
       X-Todoist-Token: "{{TODOIST_API_TOKEN}}"
     customUserVars:
@@ -140,7 +140,7 @@ When users connect to LibreChat, they'll be prompted to enter their personal Tod
 
 ### Authentication Headers
 
-The SSE server supports two header formats for authentication:
+The Streaming HTTP server supports two header formats for authentication:
 
 1. **Custom header** (recommended for LibreChat):
    ```
@@ -152,7 +152,7 @@ The SSE server supports two header formats for authentication:
    Authorization: Bearer your-todoist-api-token
    ```
 
-### Testing the SSE Server
+### Testing the Streaming HTTP Server
 
 You can test the server health endpoint:
 
@@ -163,20 +163,27 @@ curl http://localhost:3000/
 Expected response:
 ```json
 {
-  "name": "Todoist MCP SSE Server",
+  "name": "Todoist MCP Streaming HTTP Server",
   "version": "4.14.0",
   "status": "running",
-  "endpoints": {
-    "sse": "/sse",
-    "message": "/message"
-  },
+  "endpoint": "/mcp",
+  "methods": ["GET", "POST", "DELETE"],
   "activeSessions": 0
 }
 ```
 
+### How It Works
+
+The Streaming HTTP transport uses a single `/mcp` endpoint that handles:
+- **POST requests**: Initialize new sessions (without session ID) or send MCP messages (with session ID)
+- **GET requests**: Establish SSE streams for receiving server-sent events (requires session ID)
+- **DELETE requests**: Terminate sessions (requires session ID)
+
+Sessions are managed via the `Mcp-Session-Id` header, which is returned by the server on initialization.
+
 ### HTTPS Support
 
-The SSE server supports both HTTP and HTTPS modes.
+The Streaming HTTP server supports both HTTP and HTTPS modes.
 
 #### Option 1: Direct HTTPS (Development)
 
@@ -195,15 +202,15 @@ USE_HTTPS=true \
 HTTPS_KEY_PATH=./key.pem \
 HTTPS_CERT_PATH=./cert.pem \
 PORT=3000 \
-npm run start:sse
+npm run start:multiuser
 ```
 
 3. **Update LibreChat config:**
 
 ```yaml
 todoist:
-  url: "https://localhost:3000/sse"
-  transport: "sse"
+  type: streamable-http
+  url: "https://localhost:3000/mcp"
   # ... rest of config
 ```
 
@@ -247,15 +254,15 @@ your-domain.com {
 }
 ```
 
-Then start the SSE server normally (HTTP mode):
+Then start the Streaming HTTP server normally (HTTP mode):
 
 ```sh
-PORT=3000 npm run start:sse
+PORT=3000 npm run start:multiuser
 ```
 
 ### Deploying for Production
 
-When deploying the SSE server for production use:
+When deploying the Streaming HTTP server for production use:
 
 1. **Use a reverse proxy** (nginx, Caddy, etc.) with HTTPS (recommended)
 2. **Configure CORS** if accessing from a different domain
@@ -269,17 +276,17 @@ When deploying the SSE server for production use:
 Example deployment command:
 
 ```sh
-PORT=8080 node dist/sse-server.js
+PORT=8080 node dist/http-server.js
 ```
 
 Or using npx from the published package:
 
 ```sh
-PORT=8080 npx @doist/todoist-ai-sse
+PORT=8080 npx @doist/todoist-ai-http
 ```
 
 > [!NOTE]
-> The SSE server maintains separate MCP server instances for each user connection, ensuring complete isolation between users' Todoist data.
+> The Streaming HTTP server maintains separate MCP server instances for each user connection, ensuring complete isolation between users' Todoist data.
 
 ## Using Streamable HTTP Server Transport
 
