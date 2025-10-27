@@ -202,8 +202,17 @@ function main() {
 
             const httpsServer = createHttpsServer(httpsOptions, app)
             httpsServer.listen(PORT, '::', () => {
-                console.error(`Todoist MCP Streaming HTTP Server running on port ${PORT} (HTTPS)`)
+                const addr = httpsServer.address()
+                console.error('='.repeat(60))
+                console.error('Todoist MCP Streaming HTTP Server (HTTPS)')
+                console.error('='.repeat(60))
+                console.error(`Port: ${PORT}`)
+                console.error(`Listening on: ${typeof addr === 'object' ? addr?.address : addr}`)
+                console.error('IPv6: ✓ (binding to ::)')
+                console.error('IPv4: ✓ (via IPv4-mapped IPv6 addresses)')
                 console.error(`MCP endpoint: https://localhost:${PORT}/mcp`)
+                console.error(`Health check: https://localhost:${PORT}/`)
+                console.error('='.repeat(60))
             })
         } catch (error) {
             console.error('[ERROR] Failed to start HTTPS server:', error)
@@ -213,8 +222,20 @@ function main() {
         // HTTP mode (default)
         const httpServer = createHttpServer(app)
         httpServer.listen(PORT, '::', () => {
-            console.error(`Todoist MCP Streaming HTTP Server running on port ${PORT} (HTTP)`)
+            const addr = httpServer.address()
+            console.error('='.repeat(60))
+            console.error('Todoist MCP Streaming HTTP Server (HTTP)')
+            console.error('='.repeat(60))
+            console.error(`Port: ${PORT}`)
+            console.error(`Listening on: ${typeof addr === 'object' ? addr?.address : addr}`)
+            console.error('IPv6: ✓ (binding to ::)')
+            console.error('IPv4: ✓ (via IPv4-mapped IPv6 addresses)')
             console.error(`MCP endpoint: http://localhost:${PORT}/mcp`)
+            console.error(`Health check: http://localhost:${PORT}/`)
+            if (process.env.RAILWAY_PRIVATE_DOMAIN) {
+                console.error(`Internal URL: http://${process.env.RAILWAY_PRIVATE_DOMAIN}/mcp`)
+            }
+            console.error('='.repeat(60))
         })
     }
 }
